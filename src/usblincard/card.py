@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import threading
+import time
+from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
 
@@ -16,6 +18,8 @@ from usblincard.errors import CommandError, ReplyTimeout, UnsupportedError, UsbL
 _SERIAL_BAUD = 115200
 #: Read timeout of the port, which is how often the reader thread checks whether to stop.
 _READ_TIMEOUT = 0.02
+#: How long a resync waits for straggling replies after its own, in seconds.
+_RESYNC_SETTLE = 0.02
 
 
 class UsbLinCard:
@@ -124,7 +128,8 @@ class UsbLinCard:
     def send_raw(self, data: bytes) -> None:
         """Writes bytes to the card as they are, without waiting for anything.
 
-        Any reply ends up in the reply queue; see :meth:`pending_replies`.
+        Any reply ends up in the reply queue; see :meth:`pending_replies`. The next command first
+        drops the replies that are still there (see :meth:`command`).
 
         Args:
             data: The bytes to write, including any CR terminators.
@@ -134,9 +139,14 @@ class UsbLinCard:
         """
         with self._lock:
             self._write(data)
+            self._out_of_sync = True
 
     def command(self, line: str, timeout: float | None = None) -> p.Reply:
         """Sends one command line and returns the reply, whether it is a success or not.
+
+        After a reply timeout or :meth:`send_raw`, replies may still be on their way that belong
+        to earlier commands. Then this first resyncs: it sends a ``V`` command, and drops the
+        replies up to and shortly after its reply.
 
         Args:
             line: The command without the CR, e.g. ``"R0 10 00032 4"``. Spaces are allowed (the
@@ -168,14 +178,18 @@ class UsbLinCard:
                 raise
 
     def _resync(self, timeout: float) -> None:
-        """Drops the late replies of the commands that timed out.
+        """Drops the late replies of earlier commands.
 
-        It reads the replies up to the reply of a ``V`` command (no other reply starts with ``V``).
+        It reads the replies up to the reply of a ``V`` command (no other reply starts with
+        ``V``), and then drops what arrives shortly after it, in case a late reply was a ``V``
+        reply too.
         """
         self._reader.drain_replies()
         self._write(p.VERSION.encode() + b"\r")
         while not self._reader.reply(timeout).text.startswith("V"):
             pass
+        time.sleep(_RESYNC_SETTLE)
+        self._reader.drain_replies()
         self._out_of_sync = False
 
     def command_ok(self, line: str, timeout: float | None = None) -> p.Reply:
@@ -338,3 +352,292 @@ class UsbLinCard:
         with self._lock:
             self._write(p.BOOT.encode() + b"\r")
             self.close()
+
+    # Tables.
+
+    def schedule_header(self, lin_id: int, length: int, slot_ms: int | None = None) -> None:
+        """Adds a header to the commander schedule, and subscribes to its response.
+
+        The responses that arrive are reported as frames. This is how the card polls a responder.
+
+        Args:
+            lin_id: The frame ID.
+            length: The length of the response, 1 to 8 bytes.
+            slot_ms: The frame slot time in milliseconds (``R0``). None (``r0``) lets the card
+                calculate it from the baud rate and the length (see
+                :func:`~usblincard.protocol.auto_slot_ms`).
+
+        Raises:
+            ValueError: An argument is out of range.
+            CommandError: The schedule or the responder table is full.
+        """
+        self.command_ok(p.r0(lin_id, length) if slot_ms is None else p.R0(lin_id, slot_ms, length))
+
+    def schedule_frame(self, lin_id: int, data: bytes, slot_ms: int) -> None:
+        """Adds a command frame to the commander schedule (``T0``): the card sends the header and publishes ``data``.
+
+        Its publishes aren't reported, unless the response is changed with
+        :meth:`replace_response` or :meth:`queue_response`.
+
+        Args:
+            lin_id: The frame ID.
+            data: The response, 1 to 8 bytes.
+            slot_ms: The frame slot time in milliseconds.
+
+        Raises:
+            ValueError: An argument is out of range.
+            CommandError: The schedule or the responder table is full.
+        """
+        self.command_ok(p.T0(lin_id, slot_ms, data))
+
+    def subscribe(self, lin_id: int, length: int) -> None:
+        """Subscribes to the responses of ``lin_id`` (``r1``); they are reported as frames.
+
+        No header is scheduled: another commander sends it.
+
+        Args:
+            lin_id: The frame ID.
+            length: The length of the response, 1 to 8 bytes.
+
+        Raises:
+            ValueError: An argument is out of range.
+            CommandError: The responder table is full.
+        """
+        self.command_ok(p.r1(lin_id, length))
+
+    def publish(self, lin_id: int, data: bytes) -> None:
+        """Publishes ``data`` as the response whenever a header of ``lin_id`` comes (``t1``).
+
+        No header is scheduled: another commander sends it (or the card itself, with
+        :meth:`schedule_header`).
+
+        Args:
+            lin_id: The frame ID.
+            data: The response, 1 to 8 bytes.
+
+        Raises:
+            ValueError: An argument is out of range.
+            CommandError: The responder table is full.
+        """
+        self.command_ok(p.t1(lin_id, data))
+
+    def wipe(self) -> None:
+        """Wipes the schedule and the responder table (``w``), and the response queue."""
+        self.command_ok(p.WIPE)
+
+    def replace_response(self, lin_id: int, data: bytes) -> None:
+        """Replaces the response of a published ID in place (``t2``), and clears its queued responses.
+
+        The tables aren't reloaded, so the schedule doesn't restart. From now on, the publishes of
+        ``lin_id`` are reported as frames.
+
+        Args:
+            lin_id: An ID published with :meth:`publish` or :meth:`schedule_frame`.
+            data: The new response, as long as the published one.
+
+        Raises:
+            ValueError: An argument is out of range.
+            UnsupportedError: The firmware is older than 6.
+            CommandError: ``lin_id`` isn't published, or ``data`` has a different length.
+        """
+        self._require_response_queue()
+        self.command_ok(p.t2(lin_id, data))
+
+    def queue_response(self, lin_id: int, data: bytes) -> bool:
+        """Queues the next response of a published ID (``t3``).
+
+        After each publish of ``lin_id``, the next queued response replaces its response. When the
+        queue is empty, the last response keeps being published. From now on, the publishes of
+        ``lin_id`` are reported as frames, so a script can keep the queue filled.
+
+        Args:
+            lin_id: An ID published with :meth:`publish` or :meth:`schedule_frame`.
+            data: The response, as long as the published one.
+
+        Returns:
+            True if it was queued. False if the card rejected it, which for a published ID of the
+            right length means that the queue is full (it holds
+            :data:`~usblincard.protocol.RESPONSE_QUEUE_DEPTH` responses, all for the same ID).
+
+        Raises:
+            ValueError: An argument is out of range.
+            UnsupportedError: The firmware is older than 6.
+        """
+        self._require_response_queue()
+        return self.command(p.t3(lin_id, data)).ok
+
+    # Frames.
+
+    def send_frame(self, lin_id: int, data: bytes, timeout: float = 1.0) -> None:
+        """Sends one whole frame, the header and the response ``data`` (``t0``).
+
+        The channel must be open, either normally or in monitoring mode. In normal mode, the
+        schedule stops for the frame and then restarts from its first entry.
+
+        The card rejects a single frame while its previous one is still being sent, so this retries
+        until the card accepts it.
+
+        Args:
+            lin_id: The frame ID.
+            data: The response, 1 to 8 bytes.
+            timeout: How long to retry, in seconds.
+
+        Raises:
+            ValueError: An argument is out of range.
+            CommandError: The card didn't accept the frame within the timeout (e.g. because the
+                channel is closed).
+        """
+        line = p.t0(lin_id, data)
+        deadline = time.monotonic() + timeout
+        while True:
+            reply = self.command(line)
+            if reply.ok:
+                return
+            if time.monotonic() >= deadline:
+                raise CommandError(line, reply, self.name)
+            time.sleep(0.002)
+
+    def _timeout(self, timeout: float | None) -> float:
+        return self.timeout if timeout is None else timeout
+
+    def receive(self, timeout: float | None = None) -> p.Frame | None:
+        """Removes and returns the oldest reported frame, waiting for one if there is none yet.
+
+        Args:
+            timeout: How long to wait, in seconds; defaults to :attr:`timeout`. 0 doesn't wait.
+
+        Returns:
+            The frame, or None if none came within the timeout.
+
+        Raises:
+            ProtocolError: The card sent a malformed line.
+            UsbLinCardError: The port has failed.
+        """
+        self._reader.check()
+        return self._reader.pop_frame(self._timeout(timeout))
+
+    def iter_frames(self, timeout: float | None = None) -> Iterator[p.Frame]:
+        """Yields the reported frames as they come, removing them.
+
+        Args:
+            timeout: Stop when no frame has come for this many seconds; None never stops.
+
+        Yields:
+            The frames, oldest first.
+
+        Raises:
+            ProtocolError: The card sent a malformed line.
+            UsbLinCardError: The port has failed.
+        """
+        while True:
+            frame = self.receive(1.0 if timeout is None else timeout)
+            if frame is not None:
+                yield frame
+            elif timeout is not None:
+                return
+
+    def frames(self) -> list[p.Frame]:
+        """Returns the reported frames that haven't been removed, without removing them."""
+        return self._reader.frames()
+
+    def clear_frames(self) -> None:
+        """Drops the reported frames that haven't been removed."""
+        self._reader.clear_frames()
+
+    def wait_frames(self, count: int, timeout: float | None = None) -> list[p.Frame]:
+        """Waits until at least ``count`` frames have been reported, and returns them all.
+
+        The frames aren't removed: the count includes the ones already there (use
+        :meth:`clear_frames` first to wait for new ones).
+
+        Args:
+            count: The number of frames to wait for.
+            timeout: How long to wait, in seconds; defaults to :attr:`timeout`.
+
+        Returns:
+            All the frames, oldest first (at least ``count``).
+
+        Raises:
+            ReplyTimeout: Fewer frames came within the timeout.
+            ProtocolError: The card sent a malformed line.
+            UsbLinCardError: The port has failed.
+        """
+        self._reader.check()
+        return self._reader.wait_frames(count, self._timeout(timeout))
+
+    def wait_frame(self, timeout: float | None = None) -> p.Frame:
+        """Waits for the first frame (see :meth:`wait_frames`) and returns it, without removing it.
+
+        Raises:
+            ReplyTimeout: No frame came within the timeout.
+        """
+        return self.wait_frames(1, timeout)[0]
+
+    def collect_frames(self, duration: float) -> list[p.Frame]:
+        """Drops the frames reported so far, waits for ``duration`` seconds, and returns the ones reported meanwhile.
+
+        The returned frames stay in the buffer too.
+        """
+        self.clear_frames()
+        time.sleep(duration)
+        return self.frames()
+
+    # Helpers.
+
+    def reset(self, baud_rate: int = p.DEFAULT_BAUD_RATE, checksum: p.Checksum = p.Checksum.ENHANCED) -> p.ErrorFlags:
+        """Puts the card into a known, quiet state.
+
+        It closes the channel, wipes the tables, sets the baud rate and the checksums (diagnostic
+        frames classic), clears the error flags, and drops the frames and the replies that
+        haven't been read.
+
+        Args:
+            baud_rate: The baud rate to set.
+            checksum: The checksum model to set.
+
+        Returns:
+            The error flags that were latched before the reset.
+        """
+        self.close_channel()
+        self.wipe()
+        self.set_baud_rate(baud_rate)
+        self.set_checksum(checksum)
+        self.set_diagnostic_classic(True)
+        flags = self.read_flags()
+        self.clear_frames()
+        self.clear_replies()
+        return flags
+
+    def request(self, lin_id: int, length: int, timeout: float | None = None, slot_ms: int = 20) -> bytes | None:
+        """Sends the header of ``lin_id`` and returns the response of a responder.
+
+        The card has no command for a single header. So this wipes the tables, schedules the
+        header (repeating every ``slot_ms`` until a response comes), and wipes the tables again.
+        The channel must be open (normal mode). The frames reported before the call are dropped,
+        and so are the other frames that arrive meanwhile.
+
+        Args:
+            lin_id: The frame ID.
+            length: The length of the response, 1 to 8 bytes.
+            timeout: How long to wait for the response, in seconds; defaults to :attr:`timeout`.
+            slot_ms: The slot time of the scheduled header in milliseconds.
+
+        Returns:
+            The response, or None if none came within the timeout.
+
+        Raises:
+            ValueError: An argument is out of range.
+        """
+        deadline = time.monotonic() + self._timeout(timeout)
+        self.wipe()
+        self.clear_frames()
+        self.schedule_header(lin_id, length, slot_ms)
+        try:
+            while True:
+                frame = self.receive(max(0.0, deadline - time.monotonic()))
+                if frame is None:
+                    return None
+                if frame.id == lin_id and len(frame.data) == length:
+                    return frame.data
+        finally:
+            self.wipe()

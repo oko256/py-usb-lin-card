@@ -127,10 +127,15 @@ def test_send_raw_and_pending_replies(card, fw):
     while len(replies) < 2:
         replies += card.pending_replies()
     assert replies == [Reply("V0306", True), Reply("", False)]
-    card.send_raw(b"V\r")
-    card.command("V")  # waits for the first reply, which is the raw one's
     card.clear_replies()
     assert card.pending_replies() == []
+
+
+@pytest.mark.parametrize("raw", [b"V\r", b"F\rQ\r", b"N\r"])
+def test_replies_of_raw_commands_are_not_taken_for_the_next_reply(card, fw, raw):
+    card.send_raw(raw)
+    assert card.command("F").text == "F00"
+    assert card.command("N").text == "N" + fw.uid
 
 
 def test_protocol_error_is_raised_from_the_next_command(card, fw):
