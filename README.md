@@ -58,18 +58,18 @@ Version(hardware=3, firmware=6)
 ```python
 from usblincard import UsbLinCard, find_cards
 
-print(find_cards())                         # serial numbers and ports of the connected cards
-card = UsbLinCard.find("1A2B3C4D5E03")      # by USB serial number, whichever port it got
-card = UsbLinCard("/dev/ttyACM0")           # by port (or COM3 on Windows)
+print(find_cards())  # serial numbers and ports of the connected cards
+card = UsbLinCard.find("1A2B3C4D5E03")  # by USB serial number, whichever port it got
+card = UsbLinCard("/dev/ttyACM0")  # by port (or COM3 on Windows)
 ```
 
 ### Poll a responder as the commander
 
 ```python
 card.reset()
-card.schedule_header(0x10, 4, slot_ms=50)   # the header of 0x10 every 50 ms, 4-byte response
+card.schedule_header(0x10, 4, slot_ms=50)  # the header of 0x10 every 50 ms, 4-byte response
 card.open_channel()
-for frame in card.iter_frames(timeout=1):   # until no response has come for 1 s
+for frame in card.iter_frames(timeout=1):  # until no response has come for 1 s
     print(frame.id, frame.data.hex(), frame.timestamp)
 ```
 
@@ -80,10 +80,10 @@ response, or None if nobody responded. It wipes the tables while doing it.
 
 ```python
 card.reset()
-card.publish(0x10, b"\xde\xad\xbe\xef")     # answer the header of 0x10
-card.subscribe(0x20, 2)                     # report the 2-byte frames of 0x20
+card.publish(0x10, b"\xde\xad\xbe\xef")  # answer the header of 0x10
+card.subscribe(0x20, 2)  # report the 2-byte frames of 0x20
 card.open_channel()
-frame = card.receive(timeout=5)             # None if none came
+frame = card.receive(timeout=5)  # None if none came
 ```
 
 Send a command frame (header and data) with `card.schedule_frame(0x20, b"\xca\xfe", 20)` in the
@@ -114,9 +114,9 @@ for frame in card.iter_frames(timeout=1):
 ### Check for bus errors
 
 ```python
-flags = card.read_flags()                   # reading clears them
+flags = card.read_flags()  # reading clears them
 if flags:
-    print(f"errors: {flags!r}")             # e.g. <ErrorFlags.NOISE|LIN_FRAME_ERROR: 132>
+    print(f"errors: {flags!r}")  # e.g. <ErrorFlags.NOISE|LIN_FRAME_ERROR: 132>
 ```
 
 ### Use another baud rate or the classic checksum
