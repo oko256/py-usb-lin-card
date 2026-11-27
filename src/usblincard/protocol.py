@@ -7,7 +7,7 @@ reported asynchronously as lines starting with ``t``.
 This module encodes the commands and parses the replies and frame lines. The encoder functions are
 named after the firmware commands (``t0``, ``R0``, ...) and return the command line without the
 CR. They check their arguments and raise :class:`ValueError` for anything the card would reject,
-so a script finds its mistakes before they reach the card. :class:`usblincard.UsbLinCard` uses
+so a script finds its mistakes before they reach the card. :class:`usblincard.card.UsbLinCard` uses
 them, and most scripts don't need this module directly.
 """
 
@@ -40,9 +40,9 @@ CR = 0x0D
 #: Terminator of failed replies.
 BEL = 0x07
 
-#: Opens the channel: the commander and responder run with the configured tables.
+#: Opens the channel, so that the commander and responder run with the configured tables.
 OPEN = "O"
-#: Opens the channel in monitoring mode: every frame on the bus is reported.
+#: Opens the channel in monitoring mode, which reports every frame on the bus.
 MONITOR = "L"
 #: Closes the channel; also cancels a pending single frame.
 CLOSE = "C"
@@ -56,16 +56,20 @@ SERIAL_NUMBER = "N"
 FLAGS = "F"
 #: Reboots into the STM32 USB DFU bootloader; the card doesn't reply.
 BOOT = "boot"
-#: Debug builds only: reads the stack usage high-water mark (reply ``d`` and 8 hex digits).
+#: Reads the stack usage high-water mark (reply ``d`` and 8 hex digits), in Debug builds only.
 STACK_USAGE = "d1"
 
 
 class BaudRate(enum.IntEnum):
     """The LIN baud rates the card supports."""
 
+    #: 2400 baud (``S1``).
     B2400 = 2400
+    #: 9600 baud (``S2``).
     B9600 = 9600
+    #: 10400 baud (``S3``).
     B10400 = 10400
+    #: 19200 baud (``S4``), the default.
     B19200 = 19200
 
     @property
@@ -88,7 +92,7 @@ class ErrorFlags(enum.IntFlag):
 
     #: No errors.
     NONE = 0
-    #: LIN receiver overrun: received bytes were lost.
+    #: LIN receiver overrun, so received bytes were lost.
     RX_OVERRUN = 0x01
     #: A received byte had noise and was dropped (typical with collisions or a baud rate mismatch).
     NOISE = 0x04
@@ -331,7 +335,7 @@ def set_baud_rate(baud_rate: int) -> str:
     """Encodes ``Sx``: set the LIN baud rate (only allowed while the channel is closed).
 
     Args:
-        baud_rate: One of the rates of :class:`BaudRate`.
+        baud_rate: One of the rates of :class:`~usblincard.protocol.BaudRate`.
 
     Returns:
         The command line without the CR.

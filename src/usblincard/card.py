@@ -11,9 +11,10 @@ from types import TracebackType
 import serial
 
 from usblincard import protocol as p
-from usblincard._reader import LineReader, SerialLike
+from usblincard._reader import LineReader
 from usblincard.discovery import find_card
 from usblincard.errors import CommandError, ReplyTimeout, UnsupportedError, UsbLinCardError
+from usblincard.transport import SerialLike
 
 #: Serial settings don't matter for a USB CDC port; this is just a common value.
 _SERIAL_BAUD = 115200
@@ -92,7 +93,7 @@ class UsbLinCard:
 
         Args:
             serial_number: The USB serial number of the card (see
-                :func:`~usblincard.find_cards`). None opens the only card that is connected.
+                :func:`~usblincard.discovery.find_cards`). None opens the only card that is connected.
             timeout: Default reply timeout of the commands, in seconds.
 
         Returns:
@@ -173,7 +174,7 @@ class UsbLinCard:
         Args:
             line: The command without the CR, e.g. ``"R0 10 00032 4"``. Spaces are allowed (the
                 card ignores all non-alphanumeric characters).
-            timeout: Reply timeout in seconds; defaults to :attr:`timeout`.
+            timeout: Reply timeout in seconds; defaults to the card's ``timeout``.
 
         Returns:
             The reply.
@@ -219,7 +220,7 @@ class UsbLinCard:
 
         Args:
             line: The command without the CR.
-            timeout: Reply timeout in seconds; defaults to :attr:`timeout`.
+            timeout: Reply timeout in seconds; defaults to the card's ``timeout``.
 
         Returns:
             The reply.
@@ -338,7 +339,7 @@ class UsbLinCard:
     def serial_number(self) -> str:
         """Returns the serial number of the card (``N``): its MCU unique ID as 24 hex digits.
 
-        This is not the same as the USB serial number (see :func:`usblincard.find_cards`).
+        This is not the same as the USB serial number (see :func:`usblincard.discovery.find_cards`).
 
         Raises:
             ProtocolError: The reply is malformed.
@@ -526,7 +527,7 @@ class UsbLinCard:
         """Removes and returns the oldest reported frame, waiting for one if there is none yet.
 
         Args:
-            timeout: How long to wait, in seconds; defaults to :attr:`timeout`. 0 doesn't wait.
+            timeout: How long to wait, in seconds; defaults to the card's ``timeout``. 0 doesn't wait.
 
         Returns:
             The frame, or None if none came within the timeout.
@@ -574,7 +575,7 @@ class UsbLinCard:
 
         Args:
             count: The number of frames to wait for.
-            timeout: How long to wait, in seconds; defaults to :attr:`timeout`.
+            timeout: How long to wait, in seconds; defaults to the card's ``timeout``.
 
         Returns:
             All the frames, oldest first (at least ``count``).
@@ -641,7 +642,7 @@ class UsbLinCard:
         Args:
             lin_id: The frame ID.
             length: The length of the response, 1 to 8 bytes.
-            timeout: How long to wait for the response, in seconds; defaults to :attr:`timeout`.
+            timeout: How long to wait for the response, in seconds; defaults to the card's ``timeout``.
             slot_ms: The slot time of the scheduled header in milliseconds.
 
         Returns:

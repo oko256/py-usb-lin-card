@@ -13,6 +13,7 @@ from usblincard.card import UsbLinCard
 from usblincard.discovery import CardInfo, find_card, find_cards
 from usblincard.errors import CommandError, ProtocolError, ReplyTimeout, UnsupportedError, UsbLinCardError
 from usblincard.protocol import BaudRate, Checksum, ErrorFlags, Frame, Reply, Version, auto_slot_ms
+from usblincard.transport import SerialLike
 
 __version__ = "0.1.0"
 
@@ -26,6 +27,7 @@ __all__ = [
     "ProtocolError",
     "Reply",
     "ReplyTimeout",
+    "SerialLike",
     "UnsupportedError",
     "UsbLinCard",
     "UsbLinCardError",

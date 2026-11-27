@@ -41,7 +41,7 @@ class CardInfo:
 
     @property
     def path(self) -> str:
-        """The best path to open the card with: the stable symlink if there is one, else the port."""
+        """The best path to open the card with (the stable symlink if there is one, else the port)."""
         return self.by_id_path or self.port
 
 
