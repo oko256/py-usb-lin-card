@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "usb-lin-card"
+dynamic = ["version"]
+description = "Python library for the USB LIN Card: a LIN commander, responder and bus monitor over USB"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Olli Kokko" }]
+requires-python = ">=3.10"
+dependencies = ["pyserial>=3.5"]
+keywords = ["LIN", "LIN bus", "slcan", "USB", "automotive", "embedded"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Embedded Systems",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6"]
+docs = ["sphinx>=7.3", "furo>=2024.1", "myst-parser>=3"]
+
+[project.urls]
+Homepage = "https://github.com/oko256/py-usb-lin-card"
+Firmware = "https://github.com/oko256/usb-lin-card-fw"
+Hardware = "https://github.com/oko256/usb-lin-card-hw"
+
+[tool.hatch.version]
+path = "src/usblincard/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs", "README.md", "LICENSE"]
+exclude = ["docs/_build"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/usblincard"]
+
+# Tests
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+markers = ["hardware: needs USB LIN Cards on a LIN bus (see tests/hardware/conftest.py)"]
+
+[tool.coverage.run]
+branch = true
+source = ["usblincard"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "if __name__ == .__main__.:"]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# Static analysis
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PT", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and the docs config describe themselves through their names.
+"tests/**" = ["D"]
+"docs/conf.py" = ["D"]

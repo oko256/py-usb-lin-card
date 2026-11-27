@@ -1,0 +1,2 @@
+[files]
+extend-exclude = ["htmlcov", "docs/_build"]
