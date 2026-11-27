@@ -14,7 +14,7 @@ requires-python = ">=3.10"
 dependencies = ["pyserial>=3.5"]
 keywords = ["LIN", "LIN bus", "slcan", "USB", "automotive", "embedded"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -33,7 +33,7 @@ docs = ["sphinx>=7.3", "furo>=2024.1", "myst-parser>=3"]
 usblincard = "usblincard.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/oko256/py-usb-lin-card"
+Homepage = "https://github.com/oko256/py-usb-lin-card.git"
 Firmware = "https://github.com/oko256/usb-lin-card-fw"
 Hardware = "https://github.com/oko256/usb-lin-card-hw"
 

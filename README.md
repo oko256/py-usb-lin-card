@@ -18,7 +18,7 @@ Install the library into a virtual environment:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install "usb-lin-card @ git+https://github.com/oko256/py-usb-lin-card@v0.1.0"
+.venv/bin/pip install "usb-lin-card @ git+https://github.com/oko256/py-usb-lin-card.git@v1.0.0"
 ```
 
 Plug in a card and check that it is found:

@@ -15,7 +15,7 @@ from usblincard.errors import CommandError, ProtocolError, ReplyTimeout, Unsuppo
 from usblincard.protocol import BaudRate, Checksum, ErrorFlags, Frame, Reply, Version, auto_slot_ms
 from usblincard.transport import SerialLike
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "BaudRate",
