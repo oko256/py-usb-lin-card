@@ -191,34 +191,47 @@ The package itself re-exports all the classes, functions and exceptions above.
 
 ## Explanation
 
-**Replies and frames.** The card answers each command with exactly one reply, terminated with CR
-(success) or BEL (failure). It reports LIN frames whenever they happen, as lines starting with `t`,
-and no reply starts with `t`. A reader thread reads the port all the time and sorts the lines into
-a reply queue and a frame buffer. So frames are never lost while a command waits for its reply,
-and the frames wait in the buffer until the script takes them.
+### Replies and frames
 
-**Timestamps.** `Frame.timestamp` is the `time.monotonic()` time when the frame's line arrived from
-USB, not the time on the bus. USB adds a few milliseconds of jitter. Averages over many frames are
-accurate, though.
+The card answers each command with exactly one reply, terminated with CR (success) or BEL (failure).
+It reports LIN frames whenever they happen, as lines starting with `t`, and no reply starts with
+`t`. A reader thread reads the port all the time and sorts the lines into a reply queue and a frame
+buffer. So frames are never lost while a command waits for its reply, and the frames wait in the
+buffer until the script takes them.
 
-**One command at a time.** Commands are sent one at a time under a lock, each waiting for its
-reply, so threads can share a card. If a reply times out, it may still arrive later. Then the next
-command resyncs first: it sends `V` and drops the replies up to the `V` reply. That way, a late
-reply isn't taken as the reply of another command.
+### Timestamps
 
-**Tables.** The schedule and the responder table hold 32 entries each. Changes take effect
-immediately, and the schedule restarts from its first entry. Entries can't be removed one by one,
-only all together (`wipe()`). That's why `request()` schedules its header and then wipes the
-tables: the card has no command for sending a single header.
+`Frame.timestamp` is the `time.monotonic()` time when the frame's line arrived from USB, not the
+time on the bus. USB adds a few milliseconds of jitter. Averages over many frames are accurate,
+though.
 
-**Single frames.** `send_frame()` sends a header and its response once. The card rejects a new
-single frame while it is still sending the previous one, so `send_frame()` retries until the card
-accepts it or the timeout passes.
+### One command at a time
 
-**State.** The card keeps its mode, settings and tables while it is powered, also after the port
-is closed. A script that starts with `reset()` doesn't depend on what ran before it. A script that
-ends with `reset()` leaves the bus quiet: an open card keeps answering headers by itself.
+Commands are sent one at a time under a lock, each waiting for its reply, so threads can share a
+card. If a reply times out, it may still arrive later. Then the next command resyncs first: it sends
+`V` and drops the replies up to the `V` reply. That way, a late reply isn't taken as the reply of
+another command.
 
-**Firmware versions.** `version()` is read once and cached. Features that need a newer firmware
-raise `UnsupportedError` instead of an obscure `CommandError`; check
-`supports_response_queue` to choose another way.
+### Tables
+
+The schedule and the responder table hold 32 entries each. Changes take effect immediately, and the
+schedule restarts from its first entry. Entries can't be removed one by one, only all together
+(`wipe()`). That's why `request()` schedules its header and then wipes the tables: the card has no
+command for sending a single header.
+
+### Single frames
+
+`send_frame()` sends a header and its response once. The card rejects a new single frame while it is
+still sending the previous one, so `send_frame()` retries until the card accepts it or the timeout
+passes.
+
+### State
+
+The card keeps its mode, settings and tables while it is powered, also after the port is closed. A
+script that starts with `reset()` doesn't depend on what ran before it. A script that ends with
+`reset()` leaves the bus quiet: an open card keeps answering headers by itself.
+
+### Firmware versions
+
+`version()` is read once and cached. Features that need a newer firmware raise `UnsupportedError`
+instead of an obscure `CommandError`; check `supports_response_queue` to choose another way.
