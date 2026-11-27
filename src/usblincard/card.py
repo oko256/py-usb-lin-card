@@ -12,6 +12,7 @@ import serial
 
 from usblincard import protocol as p
 from usblincard._reader import LineReader, SerialLike
+from usblincard.discovery import find_card
 from usblincard.errors import CommandError, ReplyTimeout, UnsupportedError, UsbLinCardError
 
 #: Serial settings don't matter for a USB CDC port; this is just a common value.
@@ -82,6 +83,27 @@ class UsbLinCard:
         self._out_of_sync = False
         self._closed = False
         self._reader = LineReader(transport, self.name)
+
+    @classmethod
+    def find(cls, serial_number: str | None = None, *, timeout: float = 2.0) -> UsbLinCard:
+        """Finds a connected card by its USB serial number, and opens it.
+
+        The card is named by its serial number.
+
+        Args:
+            serial_number: The USB serial number of the card (see
+                :func:`~usblincard.find_cards`). None opens the only card that is connected.
+            timeout: Default reply timeout of the commands, in seconds.
+
+        Returns:
+            The opened card.
+
+        Raises:
+            UsbLinCardError: No card matches, several do (when ``serial_number`` is None), or the
+                port can't be opened.
+        """
+        info = find_card(serial_number)
+        return cls(info.path, name=info.serial_number or info.port, timeout=timeout)
 
     # Lifetime.
 

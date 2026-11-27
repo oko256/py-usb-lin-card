@@ -10,6 +10,7 @@ The names most scripts need are available from the package itself::
 """
 
 from usblincard.card import UsbLinCard
+from usblincard.discovery import CardInfo, find_card, find_cards
 from usblincard.errors import CommandError, ProtocolError, ReplyTimeout, UnsupportedError, UsbLinCardError
 from usblincard.protocol import BaudRate, Checksum, ErrorFlags, Frame, Reply, Version, auto_slot_ms
 
@@ -17,6 +18,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "BaudRate",
+    "CardInfo",
     "Checksum",
     "CommandError",
     "ErrorFlags",
@@ -30,4 +32,6 @@ __all__ = [
     "Version",
     "__version__",
     "auto_slot_ms",
+    "find_card",
+    "find_cards",
 ]
